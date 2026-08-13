@@ -98,6 +98,30 @@ class FamilyDetailView(APIView):
         serializer = FamilySerializer(family, context={'request': request})
         return Response(serializer.data)
 
+    @extend_schema(
+        summary="Oilani o'chirish",
+        description=(
+            "Faqat oilani yaratgan parent o'chira oladi. "
+            "Barcha a'zolar, qoidalar, usage ma'lumotlari kaskad o'chadi."
+        ),
+        responses={204: OpenApiResponse(description="O'chirildi")},
+        tags=["Family"],
+    )
+    def delete(self, request, family_id):
+        try:
+            family = Family.objects.get(id=family_id)
+        except Family.DoesNotExist:
+            return Response({'detail': 'Topilmadi.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if family.created_by != request.user:
+            return Response(
+                {'detail': 'Faqat oilani yaratgan parent o\'chira oladi.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        family.delete()  # CASCADE: FamilyMember, AppRule, DailyUsageSummary hammasi o'chadi
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 class JoinFamilyView(APIView):
     permission_classes = (IsAuthenticated,)

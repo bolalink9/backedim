@@ -5,6 +5,7 @@ from .views import (
     UserDetailView,
     FamilyListView,
     FamilyDetailView,
+    AppStatsView,
 )
 
 urlpatterns = [
@@ -13,4 +14,5 @@ urlpatterns = [
     path('users/<uuid:user_id>/',       UserDetailView.as_view(),      name='admin-user-detail'),
     path('families/',                   FamilyListView.as_view(),      name='admin-families'),
     path('families/<uuid:family_id>/',  FamilyDetailView.as_view(),    name='admin-family-detail'),
+    path('app-stats/',                  AppStatsView.as_view(),        name='admin-app-stats'),
 ]

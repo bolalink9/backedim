@@ -1,6 +1,6 @@
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework import status
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -23,7 +23,7 @@ class RegisterView(APIView):
         tags=["Auth"],
     )
     def post(self, request):
-        serializer = RegisterSerializer(data=request.data)
+        serializer = RegisterSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
         instance = serializer.save()
         return Response(serializer.to_representation(instance), status=status.HTTP_201_CREATED)
@@ -40,9 +40,38 @@ class LoginView(APIView):
         tags=["Auth"],
     )
     def post(self, request):
-        serializer = LoginSerializer(data=request.data)
+        serializer = LoginSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
         return Response(serializer.validated_data, status=status.HTTP_200_OK)
+
+
+class LogoutView(APIView):
+    permission_classes = (IsAuthenticated,)
+
+    @extend_schema(
+        summary="Chiqish",
+        description="Refresh tokenni blacklistga qo'shadi. Access token muddati tugashini kutadi.",
+        request=None,
+        responses={204: OpenApiResponse(description="Muvaffaqiyatli chiqildi")},
+        tags=["Auth"],
+    )
+    def post(self, request):
+        refresh_token = request.data.get('refresh')
+        if not refresh_token:
+            return Response(
+                {'detail': 'refresh token majburiy.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            from rest_framework_simplejwt.tokens import RefreshToken
+            token = RefreshToken(refresh_token)
+            token.blacklist()
+        except Exception:
+            return Response(
+                {'detail': 'Token yaroqsiz yoki allaqachon bekor qilingan.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class PasswordResetRequestView(APIView):

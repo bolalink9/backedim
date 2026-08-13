@@ -1,4 +1,4 @@
-from django.db.models import Count, Q
+from django.db.models import Count, Q, Sum
 from django.utils import timezone
 from datetime import timedelta
 from rest_framework.views import APIView
@@ -8,6 +8,7 @@ from drf_spectacular.utils import extend_schema
 
 from accounts.models import User
 from families.models import Family, FamilyMember
+from app_control.models import AppRule, DailyUsageSummary
 
 
 class DashboardStatsView(APIView):
@@ -245,4 +246,68 @@ class FamilyDetailView(APIView):
             'id':            str(family.id),
             'plan':          family.effective_plan,
             'vip_expires_at': family.vip_expires_at,
+        })
+
+
+class AppStatsView(APIView):
+    """Eng ko'p ishlatiladigan va taqiqlangan ilovalar reytingi"""
+    permission_classes = (IsAdminUser,)
+
+    @extend_schema(summary="Ilovalar statistikasi", tags=["Admin"])
+    def get(self, request):
+        # Eng ko'p ishlatiladigan ilovalar (jami sekund bo'yicha)
+        top_used = (
+            DailyUsageSummary.objects
+            .values('package_name', 'app_label')
+            .annotate(total_secs=Sum('total_secs'), users_count=Count('child', distinct=True))
+            .order_by('-total_secs')[:20]
+        )
+
+        # Eng ko'p taqiqlangan ilovalar
+        top_blocked = (
+            AppRule.objects
+            .filter(is_blocked=True)
+            .values('package_name', 'app_label')
+            .annotate(block_count=Count('id'))
+            .order_by('-block_count')[:20]
+        )
+
+        # Eng ko'p limit qo'yilgan ilovalar
+        top_limited = (
+            AppRule.objects
+            .filter(is_blocked=False, daily_limit_mins__isnull=False)
+            .values('package_name', 'app_label')
+            .annotate(limit_count=Count('id'))
+            .order_by('-limit_count')[:20]
+        )
+
+        def fmt_mins(secs):
+            return round(secs / 60, 1) if secs else 0
+
+        return Response({
+            'top_used': [
+                {
+                    'package_name': r['package_name'],
+                    'app_label':    r['app_label'] or r['package_name'],
+                    'total_mins':   fmt_mins(r['total_secs']),
+                    'users_count':  r['users_count'],
+                }
+                for r in top_used
+            ],
+            'top_blocked': [
+                {
+                    'package_name': r['package_name'],
+                    'app_label':    r['app_label'] or r['package_name'],
+                    'block_count':  r['block_count'],
+                }
+                for r in top_blocked
+            ],
+            'top_limited': [
+                {
+                    'package_name': r['package_name'],
+                    'app_label':    r['app_label'] or r['package_name'],
+                    'limit_count':  r['limit_count'],
+                }
+                for r in top_limited
+            ],
         })
