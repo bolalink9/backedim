@@ -1,3 +1,6 @@
+[phases.setup]
+nixPkgs = ["postgresql", "libpq"]
+
 [phases.build]
 cmds = [
   "pip install -r requirements.txt",
