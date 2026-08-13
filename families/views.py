@@ -8,16 +8,45 @@ from .models import Family, FamilyMember
 from .serializers import (
     CreateFamilySerializer,
     FamilySerializer,
+    FamilyPlanSerializer,
     JoinFamilySerializer,
+    UpgradePlanSerializer,
+    DowngradeToFreeSerializer,
 )
 
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def get_family_for_member(family_id, user) -> Family | None:
+    """Foydalanuvchi bu oilaga aktiv a'zo bo'lsa qaytaradi, aks holda None."""
+    try:
+        member = FamilyMember.objects.select_related('family').get(
+            family_id=family_id, user=user, is_active=True
+        )
+        return member.family
+    except FamilyMember.DoesNotExist:
+        return None
+
+
+def get_family_for_parent(family_id, user) -> Family | None:
+    """Faqat parent role uchun."""
+    try:
+        member = FamilyMember.objects.select_related('family').get(
+            family_id=family_id, user=user, is_active=True, role=FamilyMember.Role.PARENT
+        )
+        return member.family
+    except FamilyMember.DoesNotExist:
+        return None
+
+
+# ── Views ─────────────────────────────────────────────────────────────────────
 
 class CreateFamilyView(APIView):
     permission_classes = (IsAuthenticated,)
 
     @extend_schema(
         summary="Oila yaratish",
-        description="Faqat parent role uchun. Oila yaratib, invite code generatsiya qiladi.",
+        description="Faqat parent uchun. 7 kunlik VIP trial avtomatik boshlanadi.",
         request=CreateFamilySerializer,
         responses={201: FamilySerializer},
         tags=["Family"],
@@ -39,7 +68,7 @@ class MyFamiliesView(APIView):
 
     @extend_schema(
         summary="Mening oilalarim",
-        description="Foydalanuvchi a'zo bo'lgan barcha oilalar.",
+        description="Foydalanuvchi a'zo bo'lgan barcha oilalar (plan ma'lumotlari bilan).",
         responses={200: FamilySerializer(many=True)},
         tags=["Family"],
     )
@@ -56,22 +85,14 @@ class MyFamiliesView(APIView):
 class FamilyDetailView(APIView):
     permission_classes = (IsAuthenticated,)
 
-    def get_object(self, family_id, user):
-        try:
-            family = Family.objects.get(id=family_id)
-            FamilyMember.objects.get(family=family, user=user, is_active=True)
-            return family
-        except (Family.DoesNotExist, FamilyMember.DoesNotExist):
-            return None
-
     @extend_schema(
         summary="Oila ma'lumotlari",
-        description="Oila haqida to'liq ma'lumot va barcha a'zolar.",
+        description="To'liq oila ma'lumoti, a'zolar va plan holati.",
         responses={200: FamilySerializer},
         tags=["Family"],
     )
     def get(self, request, family_id):
-        family = self.get_object(family_id, request.user)
+        family = get_family_for_member(family_id, request.user)
         if not family:
             return Response({'detail': 'Topilmadi.'}, status=status.HTTP_404_NOT_FOUND)
         serializer = FamilySerializer(family, context={'request': request})
@@ -83,7 +104,10 @@ class JoinFamilyView(APIView):
 
     @extend_schema(
         summary="Oilaga qo'shilish",
-        description="Invite code orqali oilaga child sifatida qo'shilish.",
+        description=(
+            "Invite code orqali oilaga child sifatida qo'shilish. "
+            "FREE planda max 1 ta, VIP planda max 3 ta farzand qo'shilishi mumkin."
+        ),
         request=JoinFamilySerializer,
         responses={200: FamilySerializer},
         tags=["Family"],
@@ -102,20 +126,83 @@ class FamilyMembersView(APIView):
     @extend_schema(
         summary="Oila a'zolari",
         description="Oiladagi barcha aktiv a'zolar ro'yxati.",
-        responses={200: OpenApiResponse(description="A'zolar ro'yxati")},
+        responses={200: FamilySerializer},
         tags=["Family"],
     )
     def get(self, request, family_id):
-        # Foydalanuvchi bu oilaga a'zo ekanligini tekshirish
-        if not FamilyMember.objects.filter(
-            family_id=family_id, user=request.user, is_active=True
-        ).exists():
-            return Response({'detail': 'Ruxsat yo\'q.'}, status=status.HTTP_403_FORBIDDEN)
+        family = get_family_for_member(family_id, request.user)
+        if not family:
+            return Response({'detail': "Ruxsat yo'q."}, status=status.HTTP_403_FORBIDDEN)
 
         members = FamilyMember.objects.filter(
-            family_id=family_id, is_active=True
+            family=family, is_active=True
         ).select_related('user')
 
         from .serializers import FamilyMemberSerializer
-        serializer = FamilyMemberSerializer(members, many=True)
+        serializer = FamilyMemberSerializer(members, many=True, context={'request': request})
         return Response(serializer.data)
+
+
+class FamilyPlanView(APIView):
+    permission_classes = (IsAuthenticated,)
+
+    @extend_schema(
+        summary="Oila plan holati",
+        description="Hozirgi plan, trial qolgan vaqt, max farzand soni.",
+        responses={200: FamilyPlanSerializer},
+        tags=["Family / Plan"],
+    )
+    def get(self, request, family_id):
+        family = get_family_for_member(family_id, request.user)
+        if not family:
+            return Response({'detail': 'Topilmadi.'}, status=status.HTTP_404_NOT_FOUND)
+        serializer = FamilyPlanSerializer(family)
+        return Response(serializer.data)
+
+
+class UpgradePlanView(APIView):
+    permission_classes = (IsAuthenticated,)
+
+    @extend_schema(
+        summary="VIP planga o'tish",
+        description=(
+            "To'lov tizimi callback'dan yoki admin tomonidan chaqiriladi. "
+            "duration_days — necha kun VIP qo'shilishi (default 30)."
+        ),
+        request=UpgradePlanSerializer,
+        responses={200: FamilyPlanSerializer},
+        tags=["Family / Plan"],
+    )
+    def post(self, request, family_id):
+        family = get_family_for_parent(family_id, request.user)
+        if not family:
+            return Response(
+                {'detail': "Faqat oila parenti VIP aktivlashtirishhi mumkin."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        serializer = UpgradePlanSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        updated_family = serializer.save(family=family)
+        return Response(FamilyPlanSerializer(updated_family).data, status=status.HTTP_200_OK)
+
+
+class DowngradePlanView(APIView):
+    permission_classes = (IsAuthenticated,)
+
+    @extend_schema(
+        summary="FREE planga tushish",
+        description="Trial tugagach yoki ixtiyoriy ravishda FREE planga o'tish.",
+        responses={200: FamilyPlanSerializer},
+        tags=["Family / Plan"],
+    )
+    def post(self, request, family_id):
+        family = get_family_for_parent(family_id, request.user)
+        if not family:
+            return Response(
+                {'detail': "Faqat oila parenti plan o'zgartirishi mumkin."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        serializer = DowngradeToFreeSerializer(data={})
+        serializer.is_valid(raise_exception=True)
+        updated_family = serializer.save(family=family)
+        return Response(FamilyPlanSerializer(updated_family).data, status=status.HTTP_200_OK)

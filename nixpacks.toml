@@ -1,0 +1,8 @@
+[phases.build]
+cmds = [
+  "pip install -r requirements.txt",
+  "python manage.py collectstatic --noinput"
+]
+
+[start]
+cmd = "gunicorn backedim.wsgi --bind 0.0.0.0:$PORT --workers 2"

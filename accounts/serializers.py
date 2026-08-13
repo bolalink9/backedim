@@ -27,6 +27,10 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         refresh = RefreshToken.for_user(instance)
+        request = self.context.get('request')
+        avatar_url = None
+        if instance.avatar:
+            avatar_url = request.build_absolute_uri(instance.avatar.url) if request else instance.avatar.url
         return {
             'user': {
                 'id': str(instance.id),
@@ -34,6 +38,7 @@ class RegisterSerializer(serializers.ModelSerializer):
                 'full_name': instance.full_name,
                 'phone': instance.phone,
                 'role': instance.role,
+                'avatar': avatar_url,
             },
             'access': str(refresh.access_token),
             'refresh': str(refresh),
@@ -50,6 +55,10 @@ class LoginSerializer(serializers.Serializer):
             raise serializers.ValidationError('Email yoki parol noto\'g\'ri.')
         if not user.is_active:
             raise serializers.ValidationError('Hisob bloklangan.')
+        request = self.context.get('request')
+        avatar_url = None
+        if user.avatar:
+            avatar_url = request.build_absolute_uri(user.avatar.url) if request else user.avatar.url
         refresh = RefreshToken.for_user(user)
         return {
             'user': {
@@ -58,6 +67,7 @@ class LoginSerializer(serializers.Serializer):
                 'full_name': user.full_name,
                 'phone': user.phone,
                 'role': user.role,
+                'avatar': avatar_url,
             },
             'access': str(refresh.access_token),
             'refresh': str(refresh),
