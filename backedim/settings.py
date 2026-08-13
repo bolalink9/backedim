@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     'accounts',
     'families',
     'adminpanel',
+    'app_control',
 ]
 
 MIDDLEWARE = [
