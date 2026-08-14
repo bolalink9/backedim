@@ -134,6 +134,21 @@ class UserDetailView(APIView):
         user.save(update_fields=['is_active'])
         return Response({'id': str(user.id), 'is_active': user.is_active})
 
+    @extend_schema(
+        summary="Foydalanuvchini o'chirish",
+        description="Foydalanuvchi va unga bog'liq barcha ma'lumotlarni o'chiradi.",
+        responses={204: None},
+        tags=["Admin"],
+    )
+    def delete(self, request, user_id):
+        user = self._get_user(user_id)
+        if not user:
+            return Response({'detail': 'Topilmadi.'}, status=404)
+        if user.is_superuser:
+            return Response({'detail': 'Superuserni o\'chirib bo\'lmaydi.'}, status=400)
+        user.delete()
+        return Response(status=204)
+
 
 class FamilyListView(APIView):
     """Barcha oilalar"""
