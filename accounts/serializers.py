@@ -33,14 +33,15 @@ class RegisterSerializer(serializers.ModelSerializer):
             avatar_url = request.build_absolute_uri(instance.avatar.url) if request else instance.avatar.url
         return {
             'user': {
-                'id': str(instance.id),
-                'email': instance.email,
+                'id':       str(instance.id),
+                'email':    instance.email,
                 'full_name': instance.full_name,
-                'phone': instance.phone,
-                'role': instance.role,
-                'avatar': avatar_url,
+                'phone':    instance.phone,
+                'role':     instance.role,
+                'avatar':   avatar_url,
+                'is_staff': instance.is_staff,
             },
-            'access': str(refresh.access_token),
+            'access':  str(refresh.access_token),
             'refresh': str(refresh),
         }
 
@@ -62,14 +63,15 @@ class LoginSerializer(serializers.Serializer):
         refresh = RefreshToken.for_user(user)
         return {
             'user': {
-                'id': str(user.id),
-                'email': user.email,
+                'id':       str(user.id),
+                'email':    user.email,
                 'full_name': user.full_name,
-                'phone': user.phone,
-                'role': user.role,
-                'avatar': avatar_url,
+                'phone':    user.phone,
+                'role':     user.role,
+                'avatar':   avatar_url,
+                'is_staff': user.is_staff,
             },
-            'access': str(refresh.access_token),
+            'access':  str(refresh.access_token),
             'refresh': str(refresh),
         }
 
