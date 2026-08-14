@@ -144,8 +144,8 @@ class UserDetailView(APIView):
         user = self._get_user(user_id)
         if not user:
             return Response({'detail': 'Topilmadi.'}, status=404)
-        if user.is_superuser:
-            return Response({'detail': 'Superuserni o\'chirib bo\'lmaydi.'}, status=400)
+        if str(user.id) == str(request.user.id):
+            return Response({'detail': 'O\'zingizni o\'chira olmaysiz.'}, status=400)
         user.delete()
         return Response(status=204)
 
