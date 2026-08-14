@@ -116,3 +116,50 @@ class PasswordResetConfirmView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response({'detail': 'Parol muvaffaqiyatli yangilandi.'}, status=status.HTTP_200_OK)
+
+
+class ChangePasswordView(APIView):
+    permission_classes = (IsAuthenticated,)
+
+    @extend_schema(
+        summary="Parolni o'zgartirish",
+        description="Joriy foydalanuvchi parolini o'zgartiradi. Eski parol to'g'ri bo'lishi shart.",
+        request={
+            'application/json': {
+                'type': 'object',
+                'properties': {
+                    'old_password': {'type': 'string'},
+                    'new_password': {'type': 'string'},
+                },
+                'required': ['old_password', 'new_password'],
+            }
+        },
+        responses={
+            200: OpenApiResponse(description="Parol muvaffaqiyatli o'zgartirildi"),
+            400: OpenApiResponse(description="Eski parol noto'g'ri"),
+        },
+        tags=["Auth"],
+    )
+    def post(self, request):
+        old_password = request.data.get('old_password')
+        new_password = request.data.get('new_password')
+
+        if not old_password or not new_password:
+            return Response(
+                {'detail': 'old_password va new_password majburiy.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user = request.user
+        if not user.check_password(old_password):
+            return Response(
+                {'detail': 'Eski parol noto\'g\'ri.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user.set_password(new_password)
+        user.save()
+        return Response(
+            {'detail': "Parol muvaffaqiyatli o'zgartirildi."},
+            status=status.HTTP_200_OK,
+        )
